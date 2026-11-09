@@ -7,7 +7,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Safely initialize Twitter Client only if keys exist
 let rwClient = null;
 try {
   if (process.env.TWITTER_API_KEY && process.env.TWITTER_API_SECRET) {
@@ -40,19 +39,24 @@ app.post('/api/reports', async (req, res) => {
     const safeHandle = (handle && typeof handle === 'string') ? handle : "@mybmc";
     const safeLand = land || "Mumbai Location";
 
-    const tweetText = `🚨 Unlawful Hoarding Reported!\n\n📍 Landmark: ${safeLand}\n📌 Pincode: ${pin}\n🏛️ Ward: ${safeWard}\n\nPlease take immediate action. ${safeHandle} @mybmc`;
+    // Standardized Tweet Text
+    const tweetText = `🚨 Unlawful Hoarding Reported!\n\n📍 Landmark: ${safeLand}\n📌 Pincode: ${pin}\n🏛️ Ward: ${safeWard}\n\nPlease take action. ${safeHandle} @mybmc`;
 
     let tweetId = null;
+    let tweetError = null;
+
     if (rwClient) {
       try {
+        console.log("Attempting to post tweet to X...");
         const tweetResponse = await rwClient.v2.tweet(tweetText);
         tweetId = tweetResponse.data.id;
-        console.log(`Successfully tweeted! Tweet ID: ${tweetId}`);
+        console.log(`✅ Tweet posted successfully! Tweet ID: ${tweetId}`);
       } catch (twitterErr) {
-        console.error("Twitter API Post Error:", twitterErr);
+        console.error("❌ Twitter API Detailed Error:", JSON.stringify(twitterErr, null, 2));
+        tweetError = twitterErr.message || "Failed to post to Twitter";
       }
     } else {
-      console.log("Simulated Tweet (Twitter keys not configured):", tweetText);
+      console.log("Simulated Tweet (Keys missing):", tweetText);
     }
 
     const newReport = {
@@ -71,7 +75,14 @@ app.post('/api/reports', async (req, res) => {
     };
 
     reports.unshift(newReport);
-    res.json({ success: true, report: newReport });
+
+    // Return the specific Twitter error if posting failed so you can see it on the website
+    res.json({ 
+      success: true, 
+      report: newReport, 
+      tweetId: tweetId, 
+      twitterError: tweetError 
+    });
 
   } catch (err) {
     console.error("Server error:", err);
