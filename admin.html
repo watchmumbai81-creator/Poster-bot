@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch Mumbai - Moderator Desk</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f5; margin: 0; padding: 20px; }
+    .container { max-width: 800px; margin: auto; }
+    h1 { color: #1e293b; }
+    .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .card h3 { margin-top: 0; color: #0f172a; }
+    .btn { padding: 10px 16px; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-right: 8px; text-decoration: none; display: inline-block; }
+    .btn-approve { background: #10b981; color: white; }
+    .btn-tweet { background: #1da1f2; color: white; }
+    .btn-reject { background: #ef4444; color: white; }
+    .btn-send { background: #3b82f6; color: white; }
+    img { max-width: 100%; height: 200px; object-fit: cover; border-radius: 6px; margin: 10px 0; }
+    .publish-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; margin-top: 15px; }
+    input[type="text"] { width: 70%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>🛡️ Watch Mumbai Moderation Desk</h1>
+    <div id="pendingContainer">Loading pending reports...</div>
+  </div>
+
+  <script>
+    const API_URL = "https://poster-bot-ji8e.onrender.com"; // Your Render backend URL
+    const ADMIN_TOKEN = "watchmumbai_admin_2026"; // Must match your Render environment variable
+
+    async function loadPending() {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/pending`, {
+          headers: { 'x-admin-token': ADMIN_TOKEN }
+        });
+        const data = await res.json();
+        const container = document.getElementById('pendingContainer');
+
+        if (!data.reports || data.reports.length === 0) {
+          container.innerHTML = "<div class='card'><p>🎉 No pending reports to review!</p></div>";
+          return;
+        }
+
+        container.innerHTML = data.reports.map(r => `
+          <div class="card" id="card-${r.id}">
+            <h3>Report #${r.id}</h3>
+            <p><strong>Landmark:</strong> ${r.land} | <strong>Pincode:</strong> ${r.pin}</p>
+            <p><strong>Ward:</strong> ${r.ward} (${r.handle})</p>
+            ${r.photo ? `<img src="${r.photo}" alt="Report Photo">` : ''}
+            <div>
+              <button class="btn btn-approve" onclick="approveReport('${r.id}')">1. Approve & Notify Citizen</button>
+              <button class="btn btn-reject" onclick="rejectReport('${r.id}')">Reject</button>
+            </div>
+
+            <div id="publish-step-${r.id}" class="publish-box" style="display:none;">
+              <p style="color:#15803d; font-weight:bold; margin-top:0;">✅ Report Approved! Citizen has been notified.</p>
+              <a id="tweet-link-${r.id}" target="_blank" class="btn btn-tweet">2. Click to Post Tweet on X</a>
+              <br><br>
+              <input type="text" id="url-input-${r.id}" placeholder="Paste published Tweet link here (e.g. https://x.com/...)">
+              <button class="btn btn-send" onclick="publishTweetLink('${r.id}')">3. Send Tweet Link to Citizen</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('pendingContainer').innerHTML = "<p>Error loading reports. Check ADMIN_TOKEN or server logs.</p>";
+      }
+    }
+
+    async function approveReport(id) {
+      const res = await fetch(`${API_URL}/api/admin/approve/${id}`, {
+        method: 'POST',
+        headers: { 'x-admin-token': ADMIN_TOKEN }
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        document.getElementById(`publish-step-${id}`).style.display = 'block';
+        document.getElementById(`tweet-link-${id}`).href = data.tweetIntentUrl;
+      }
+    }
+
+    async function publishTweetLink(id) {
+      const tweetUrl = document.getElementById(`url-input-${id}`).value.trim();
+      if (!tweetUrl) return alert("Please paste the posted tweet URL first!");
+
+      const res = await fetch(`${API_URL}/api/admin/publish-tweet/${id}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': ADMIN_TOKEN 
+        },
+        body: JSON.stringify({ tweetUrl })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert("Citizen notified with the live tweet link!");
+        document.getElementById(`card-${id}`).remove();
+      }
+    }
+
+    async function rejectReport(id) {
+      const reason = prompt("Reason for rejection:");
+      if (!reason) return;
+
+      await fetch(`${API_URL}/api/admin/reject/${id}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': ADMIN_TOKEN 
+        },
+        body: JSON.stringify({ reason })
+      });
+
+      document.getElementById(`card-${id}`).remove();
+    }
+
+    loadPending();
+  </script>
+</body>
+</html>
