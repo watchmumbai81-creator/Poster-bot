@@ -1,39 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Watch Mumbai - Moderator Portal</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; color: #333; }
-    .container { max-width: 900px; margin: auto; }
-    h2 { color: #1976D2; text-align: center; }
-    .report-card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .resolved-card { border-left: 6px solid #9C27B0; background: #faf5fb; }
-    input[type="text"] { padding: 8px; width: 65%; border: 1px solid #ccc; border-radius: 4px; margin-right: 5px; }
-    button { padding: 9px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
-    .btn-verify { background: #4CAF50; }
-    .btn-tweet { background: #2196F3; }
-    .btn-resolve { background: #9C27B0; width: 100%; margin-top: 10px; }
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
-    .bg-success { background: #4CAF50; }
-    .bg-warning { background: #ff9800; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch Mumbai - Moderator Portal</title>
+<!-- Google Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #090d16;
+  --surface: #131b2e;
+  --surface-card: rgba(19, 27, 46, 0.85);
+  --ink: #f8fafc;
+  --mute: #94a3b8;
+  --line: rgba(255, 255, 255, 0.08);
+  --brand-orange: #ff7e36;
+  --brand-orange-light: rgba(255, 126, 54, 0.15);
+  --red: #ef4444;
+  --green: #10b981;
+  --purple: #9c27b0;
+  --blue: #38bdf8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  padding: 20px;
+}
+
+.container { max-width: 900px; margin: auto; }
+
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 16px; margin-bottom: 30px;
+}
+header h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--brand-orange); }
+
+.report-card {
+  background: var(--surface-card); border: 1px solid var(--line);
+  border-radius: 18px; padding: 24px; margin-bottom: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.resolved-card { border-left: 6px solid var(--purple); background: rgba(156, 39, 176, 0.05); }
+
+/* PIPELINE STAGES */
+.pipeline { display: flex; gap: 8px; margin: 18px 0; }
+.pipeline-step {
+  flex: 1; padding: 10px; text-align: center; border-radius: 8px;
+  font-size: 12px; font-weight: 800; background: rgba(255,255,255,0.05); color: var(--mute);
+  border: 1px solid var(--line);
+}
+.pipeline-step.active-1 { background: rgba(16, 185, 129, 0.2); color: var(--green); border-color: var(--green); }
+.pipeline-step.active-2 { background: rgba(56, 189, 248, 0.2); color: var(--blue); border-color: var(--blue); }
+.pipeline-step.active-3 { background: rgba(156, 39, 176, 0.2); color: var(--purple); border-color: var(--purple); }
+
+input[type="text"] {
+  background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  padding: 10px 14px; border-radius: 10px; font-size: 14px; width: 68%; margin-right: 8px;
+}
+button { font: inherit; cursor: pointer; border: 0; font-weight: 700; border-radius: 10px; padding: 10px 16px; transition: 0.2s; }
+.btn-verify { background: var(--green); color: #fff; width: 100%; margin-top: 10px; }
+.btn-tweet { background: var(--blue); color: #000; }
+.btn-resolve { background: var(--purple); color: #fff; width: 100%; margin-top: 15px; padding: 12px; }
+
+.badge { padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.bg-active { background: rgba(255, 126, 54, 0.15); color: var(--brand-orange); }
+.bg-resolved { background: rgba(156, 39, 176, 0.2); color: var(--purple); }
+
+p { margin: 8px 0; font-size: 14px; color: var(--mute); }
+strong { color: var(--ink); }
+</style>
 </head>
 <body>
 
   <div class="container">
-    <h2>Moderation Pipeline Dashboard</h2>
-    <p style="text-align: center; color: #666;">Manage 3-stage workflows and trigger automated citizen push alerts.</p>
+    <header>
+      <h2>Watch Mumbai — Admin Pipeline</h2>
+      <span style="font-size: 13px; color: var(--mute);">3-Stage Moderation & Push Dispatch</span>
+    </header>
     
     <div id="reports-container">
-      <p style="text-align:center;">Loading reports from MongoDB database...</p>
+      <p style="text-align:center; padding: 40px;">Loading reports from database...</p>
     </div>
   </div>
 
   <script>
-    const RENDER_URL = 'https://poster-bot-ji8e.onrender.com';
-    const ADMIN_TOKEN = 'watchmumbai_admin_2026';
+    const RENDER_URL = "https://poster-bot-ji8e.onrender.com";
+    const ADMIN_TOKEN = "watchmumbai_admin_2026";
 
     async function fetchAdminReports() {
       try {
@@ -43,7 +102,7 @@
         const reports = await res.json();
         renderReportCards(reports);
       } catch (err) {
-        document.getElementById('reports-container').innerHTML = '<p style="color:red; text-align:center;">Failed to connect to backend server.</p>';
+        document.getElementById('reports-container').innerHTML = '<p style="color:var(--red); text-align:center;">Failed to connect to backend server.</p>';
       }
     }
 
@@ -52,7 +111,7 @@
       container.innerHTML = '';
 
       if (reports.length === 0) {
-        container.innerHTML = '<p style="text-align:center;">No reports found.</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--mute);">No submissions found.</p>';
         return;
       }
 
@@ -66,46 +125,41 @@
         card.className = `report-card ${r.resolved ? 'resolved-card' : ''}`;
         card.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3>Ticket ID: ${r.reportId}</h3>
-            <span class="badge ${r.resolved ? 'bg-success' : 'bg-warning'}">
+            <h3 style="margin:0; font-size:18px; color:var(--ink);">Ticket: ${r.reportId}</h3>
+            <span class="badge ${r.resolved ? 'bg-resolved' : 'bg-active'}">
               ${r.resolved ? 'CLOSED & RESOLVED' : 'ACTIVE PIPELINE'}
             </span>
           </div>
 
-          <!-- 3-STAGE PROGRESS PIPELINE -->
-          <div style="display:flex; margin: 15px 0; border-radius:6px; overflow:hidden; border: 1px solid #ddd;">
-            <div style="flex:1; padding:8px; text-align:center; background:${stage >= 1 ? '#4CAF50' : '#e0e0e0'}; color:${stage >= 1 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
-              Step 1: Verified
-            </div>
-            <div style="flex:1; padding:8px; text-align:center; background:${stage >= 2 ? '#2196F3' : '#e0e0e0'}; color:${stage >= 2 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
-              Step 2: X Published
-            </div>
-            <div style="flex:1; padding:8px; text-align:center; background:${stage === 3 ? '#9C27B0' : '#e0e0e0'}; color:${stage === 3 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
-              Step 3: BMC Resolved
-            </div>
+          <!-- 3-STAGE VISUAL PIPELINE -->
+          <div class="pipeline">
+            <div class="pipeline-step ${stage >= 1 ? 'active-1' : ''}">1. Verified</div>
+            <div class="pipeline-step ${stage >= 2 ? 'active-2' : ''}">2. X Published</div>
+            <div class="pipeline-step ${stage === 3 ? 'active-3' : ''}">3. BMC Resolved</div>
           </div>
 
-          <p><strong>Ward:</strong> ${r.ward || 'N/A'} | <strong>Landmark:</strong> ${r.land || 'N/A'}</p>
+          <p><strong>Ward:</strong> ${r.ward || 'N/A'}</p>
+          <p><strong>Landmark:</strong> ${r.land || 'N/A'}</p>
           <p><strong>Citizen Handle:</strong> ${r.handle || 'Anonymous'}</p>
 
-          <div style="margin-top:15px; border-top:1px solid #eee; padding-top:12px;">
-            <!-- STEP 1 -->
+          <div style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
+            <!-- STEP 1 CONTROL -->
             ${r.status === 'pending' ? `
-              <button class="btn-verify" onclick="approveStage1('${r.reportId}')">✅ Step 1: Verify & Approve</button>
-            ` : `<p style="color:#2e7d32; font-size:14px; margin:5px 0;">✔ Step 1 Completed (Approved & Alert Sent)</p>`}
+              <button class="btn-verify" onclick="approveStage1('${r.reportId}')">✅ Step 1: Verify & Approve Submission</button>
+            ` : `<p style="color:var(--green); font-size:13px;">✔ Step 1 Complete: Verification alert dispatched.</p>`}
 
-            <!-- STEP 2 -->
-            <div style="margin-top:10px;">
-              <input type="text" id="tweet-input-${r.reportId}" value="${r.tweetUrl || ''}" placeholder="Paste Tweet URL (https://x.com/...)" />
-              <button class="btn-tweet" onclick="publishStage2('${r.reportId}')">🚀 Step 2: Save & Push Tweet</button>
+            <!-- STEP 2 CONTROL -->
+            <div style="margin-top:14px;">
+              <input type="text" id="tweet-input-${r.reportId}" value="${r.tweetUrl || ''}" placeholder="Paste X (Twitter) URL (https://x.com/...)" />
+              <button class="btn-tweet" onclick="publishStage2('${r.reportId}')">🚀 Save & Push Tweet</button>
             </div>
 
-            <!-- STEP 3 -->
-            <div style="margin-top:15px;">
+            <!-- STEP 3 CONTROL -->
+            <div style="margin-top:16px;">
               ${!r.resolved ? `
                 <button class="btn-resolve" onclick="resolveStage3('${r.reportId}')">🎉 Step 3: Mark BMC Resolved & Close Ticket</button>
               ` : `
-                <div style="background:#e8f5e9; color:#2e7d32; padding:10px; border-radius:4px; text-align:center; font-weight:bold;">
+                <div style="background:rgba(156, 39, 176, 0.15); color:var(--purple); padding:12px; border-radius:10px; text-align:center; font-weight:800; font-size:13px; border:1px solid rgba(156, 39, 176, 0.3);">
                   🏁 Ticket Successfully Closed & Archived
                 </div>
               `}
@@ -122,7 +176,7 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
         body: JSON.stringify({})
       });
-      alert('Stage 1 Complete: User notified of approval!');
+      alert('Stage 1 Complete: Citizen notified of verification!');
       fetchAdminReports();
     }
 
@@ -135,7 +189,7 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
         body: JSON.stringify({ tweetUrl })
       });
-      alert('Stage 2 Complete: Tweet published & alert sent!');
+      alert('Stage 2 Complete: Tweet published and mobile push alert dispatched!');
       fetchAdminReports();
     }
 
@@ -147,7 +201,7 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
         body: JSON.stringify({})
       });
-      alert('Stage 3 Complete: Ticket closed and final resolution push notification sent!');
+      alert('Stage 3 Complete: Ticket closed and final resolution push alert sent!');
       fetchAdminReports();
     }
 
