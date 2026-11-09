@@ -1,194 +1,200 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// In-Memory Database (Store reports and notifications)
-let reports = [];
-let userNotifications = {};
+const PORT = process.env.PORT || 3000;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'watchmumbai_admin_2026';
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Admin secret token loaded from Render environment
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "watchmumbai_admin_2026";
+// Connect to MongoDB Atlas
+if (MONGODB_URI) {
+  mongoose.connect(MONGODB_URI)
+    .then(() => console.log('Successfully connected to MongoDB Atlas!'))
+    .catch(err => console.error('MongoDB connection error:', err));
+} else {
+  console.warn('Warning: MONGODB_URI environment variable is missing.');
+}
 
-// Middleware to verify moderator access
-const authorizeAdmin = (req, res, next) => {
-  const token = req.headers['x-admin-token'];
-  if (token !== ADMIN_TOKEN) {
-    return res.status(403).json({ success: false, message: "Unauthorized: Moderator access required" });
+// Database Schema definition
+const reportSchema = new mongoose.Schema({
+  reportId: { type: String, required: true, unique: true },
+  token: { type: String, required: true }, // Unique tracking token for user privacy isolation
+  pin: String,
+  land: String,
+  lat: Number,
+  lng: Number,
+  ward: String,
+  handle: String,
+  photo: String,
+  status: { type: String, default: 'pending' }, // pending | approved | rejected | published
+  resolved: { type: Boolean, default: false },
+  tweetUrl: { type: String, default: '' },
+  notifications: [{
+    message: String,
+    tweetUrl: String,
+    timestamp: { type: Date, default: Date.now }
+  }],
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Report = mongoose.model('Report', reportSchema);
+
+// Middleware for Admin authentication
+const authAdmin = (req, res, next) => {
+  const token = req.headers['authorization'] || req.query.admin_token;
+  if (token === ADMIN_TOKEN || token === `Bearer ${ADMIN_TOKEN}`) {
+    return next();
   }
-  next();
+  return res.status(401).json({ success: false, error: 'Unauthorized admin access' });
 };
 
-// ==========================================
-// 1. PUBLIC / CITIZEN ENDPOINTS
-// ==========================================
-
-// Lodge a new report
-app.post('/api/reports', (req, res) => {
+// 1. Citizen submits a new report
+app.post('/api/reports', async (req, res) => {
   try {
     const { id, pin, land, lat, lng, ward, handle, photo } = req.body;
-    
-    const reportId = id || "MB-" + Math.floor(100000 + Math.random() * 900000);
-    const safeWard = (ward && typeof ward === 'string') ? ward : "Mumbai City";
-    const safeHandle = (handle && typeof handle === 'string') ? handle : "@mybmc";
-    const safeLand = land || "Mumbai Location";
+    const reportId = id || 'MB-' + Math.floor(100000 + Math.random() * 900000);
+    const userToken = uuidv4(); // Unique unguessable security token
 
-    const newReport = {
-      id: reportId,
-      pin: pin || "400001",
-      land: safeLand,
-      lat: lat || 19.0760,
-      lng: lng || 72.8777,
-      ward: safeWard,
-      handle: safeHandle,
-      photo: photo || "",
-      created: Date.now(),
-      status: "pending", // pending | approved | published | rejected
-      tweetUrl: null,
-      logs: ["Report lodged in database. Awaiting moderator review."]
-    };
+    const newReport = new Report({
+      reportId,
+      token: userToken,
+      pin,
+      land,
+      lat,
+      lng,
+      ward,
+      handle,
+      photo,
+      status: 'pending',
+      notifications: [{ message: 'Report received and queued for moderator review.' }]
+    });
 
-    reports.unshift(newReport);
+    await newReport.save();
 
-    // Initial Notification for Citizen
-    userNotifications[reportId] = [
-      {
-        timestamp: Date.now(),
-        message: "Your request has been successfully submitted and is pending review by Team WatchMumbai.",
-        type: "info"
+    res.json({
+      success: true,
+      report: {
+        id: reportId,
+        token: userToken,
+        status: newReport.status
       }
-    ];
-
-    res.json({ success: true, report: newReport });
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('Submit error:', err);
+    res.status(500).json({ success: false, error: 'Failed to submit report to database.' });
   }
 });
 
-// Fetch notifications for a citizen's report
-app.get('/api/reports/:id/notifications', (req, res) => {
-  const { id } = req.params;
-  const notifications = userNotifications[id] || [];
-  const report = reports.find(r => r.id === id);
-  
-  res.json({ 
-    success: true, 
-    status: report ? report.status : "unknown",
-    tweetUrl: report ? report.tweetUrl : null,
-    notifications 
-  });
-});
+// 2. Public endpoint: Only returns approved & published reports for the map view
+app.get('/api/reports/public', async (req, res) => {
+  try {
+    const publicReports = await Report.find({ status: { $in: ['approved', 'published'] } })
+      .select('-photo -token') // Exclude heavy photos & user tokens for public performance
+      .sort({ createdAt: -1 });
 
-// Fetch all approved/published reports for map display
-app.get('/api/reports/public', (req, res) => {
-  const publicReports = reports.filter(r => r.status === "approved" || r.status === "published");
-  res.json(publicReports);
-});
-
-// ==========================================
-// 2. MODERATOR ENDPOINTS
-// ==========================================
-
-// Fetch all pending reports
-app.get('/api/admin/pending', authorizeAdmin, (req, res) => {
-  const pending = reports.filter(r => r.status === "pending");
-  res.json({ success: true, count: pending.length, reports: pending });
-});
-
-// STEP 1: Approve Report & Notify Citizen
-app.post('/api/admin/approve/:id', authorizeAdmin, (req, res) => {
-  const { id } = req.params;
-  const report = reports.find(r => r.id === id);
-
-  if (!report) {
-    return res.status(404).json({ success: false, message: "Report not found" });
+    res.json(publicReports.map(r => ({
+      id: r.reportId,
+      pin: r.pin,
+      land: r.land,
+      lat: r.lat,
+      lng: r.lng,
+      ward: r.ward,
+      handle: r.handle,
+      resolved: r.resolved,
+      tweetUrl: r.tweetUrl
+    })));
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to fetch public map data.' });
   }
-
-  report.status = "approved";
-  report.logs.push("Approved by Moderator.");
-
-  // Pre-generate pre-filled tweet link for the moderator
-  const tweetText = `🚨 Unlawful Hoarding Reported!\n\n📍 Landmark: ${report.land}\n📌 Pincode: ${report.pin}\n🏛️ Ward: ${report.ward}\n\nPlease take immediate action. ${report.handle} @mybmc`;
-  const tweetIntentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-
-  // Citizen Notification 1
-  const notifyMessage = "Your request has been approved by Team WatchMumbai and will be communicated soon to BMC via X.";
-  
-  if (!userNotifications[id]) userNotifications[id] = [];
-  userNotifications[id].push({
-    timestamp: Date.now(),
-    message: notifyMessage,
-    type: "approved"
-  });
-
-  res.json({ 
-    success: true, 
-    report, 
-    tweetIntentUrl, 
-    notificationSent: notifyMessage 
-  });
 });
 
-// STEP 2: Publish Tweet URL & Send Final Notification
-app.post('/api/admin/publish-tweet/:id', authorizeAdmin, (req, res) => {
-  const { id } = req.params;
-  const { tweetUrl } = req.body;
+// 3. User Notification Polling (Isolated with Report ID & Security Token)
+app.get('/api/reports/:id/notifications', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { token } = req.query;
 
-  if (!tweetUrl) {
-    return res.status(400).json({ success: false, message: "tweetUrl is required" });
+    const report = await Report.findOne({ reportId: id });
+    if (!report) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+
+    // Secure Data Isolation: Check token if provided
+    if (token && report.token !== token) {
+      return res.status(403).json({ success: false, error: 'Access denied: Token mismatch' });
+    }
+
+    res.json({
+      success: true,
+      status: report.status,
+      tweetUrl: report.tweetUrl,
+      notifications: report.notifications
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error fetching notifications' });
   }
+});
 
-  const report = reports.find(r => r.id === id);
-  if (!report) {
-    return res.status(404).json({ success: false, message: "Report not found" });
+// 4. Admin Endpoint: Get all pending reports for moderation
+app.get('/api/admin/reports', authAdmin, async (req, res) => {
+  try {
+    const reports = await Report.find().sort({ createdAt: -1 });
+    res.json(reports);
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to fetch admin reports.' });
   }
-
-  report.status = "published";
-  report.tweetUrl = tweetUrl;
-  report.logs.push(`Published to X: ${tweetUrl}`);
-
-  // Citizen Notification 2
-  const notifyMessage = `Your report has been communicated to BMC! View the live tweet here: ${tweetUrl}`;
-  
-  if (!userNotifications[id]) userNotifications[id] = [];
-  userNotifications[id].push({
-    timestamp: Date.now(),
-    message: notifyMessage,
-    tweetUrl: tweetUrl,
-    type: "published"
-  });
-
-  res.json({ 
-    success: true, 
-    report, 
-    notificationSent: notifyMessage 
-  });
 });
 
-// Reject Report
-app.post('/api/admin/reject/:id', authorizeAdmin, (req, res) => {
-  const { id } = req.params;
-  const { reason } = req.body;
-  const report = reports.find(r => r.id === id);
+// 5. Admin Endpoint: Approve & attach tweet link
+app.post('/api/admin/reports/:id/approve', authAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tweetUrl } = req.body;
 
-  if (!report) return res.status(404).json({ success: false, message: "Report not found" });
+    const report = await Report.findOne({ reportId: id });
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
 
-  report.status = "rejected";
-  report.logs.push(`Rejected: ${reason || "Verification failed"}`);
+    report.status = tweetUrl ? 'published' : 'approved';
+    if (tweetUrl) report.tweetUrl = tweetUrl;
 
-  userNotifications[id].push({
-    timestamp: Date.now(),
-    message: `Your report could not be approved. Reason: ${reason || "Invalid details or clear photo missing."}`,
-    type: "rejected"
-  });
+    report.notifications.push({
+      message: tweetUrl
+        ? 'Your report was approved and published on X (@mybmc)!'
+        : 'Your report has been verified and approved by the moderator team.',
+      tweetUrl: tweetUrl || ''
+    });
 
-  res.json({ success: true, report });
+    await report.save();
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to update report status.' });
+  }
 });
 
-const PORT = process.env.PORT || 3000;
+// 6. Admin Endpoint: Mark as resolved/cleared by BMC
+app.post('/api/admin/reports/:id/resolve', authAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const report = await Report.findOne({ reportId: id });
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+
+    report.resolved = true;
+    report.notifications.push({
+      message: 'Great news! BMC has cleared and resolved this illegal hoarding.'
+    });
+
+    await report.save();
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to resolve report.' });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Watch Mumbai Server running on port ${PORT}`);
 });
