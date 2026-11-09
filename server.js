@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
+const webpush = require('web-push');
 
 const app = express();
 app.use(cors());
@@ -11,19 +12,29 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'watchmumbai_admin_2026';
 const MONGODB_URI = process.env.MONGODB_URI;
 
+// Configure Web Push with VAPID keys from environment variables
+const PUBLIC_VAPID_KEY = process.env.PUBLIC_VAPID_KEY;
+const PRIVATE_VAPID_KEY = process.env.PRIVATE_VAPID_KEY;
+
+if (PUBLIC_VAPID_KEY && PRIVATE_VAPID_KEY) {
+  webpush.setVapidDetails(
+    'mailto:support@watchmumbai.org',
+    PUBLIC_VAPID_KEY,
+    PRIVATE_VAPID_KEY
+  );
+}
+
 // Connect to MongoDB Atlas
 if (MONGODB_URI) {
   mongoose.connect(MONGODB_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas!'))
     .catch(err => console.error('MongoDB connection error:', err));
-} else {
-  console.warn('Warning: MONGODB_URI environment variable is missing.');
 }
 
-// Database Schema definition
+// Database Schema definition with Push Subscription support
 const reportSchema = new mongoose.Schema({
   reportId: { type: String, required: true, unique: true },
-  token: { type: String, required: true }, // Unique tracking token for user privacy isolation
+  token: { type: String, required: true },
   pin: String,
   land: String,
   lat: Number,
@@ -31,9 +42,10 @@ const reportSchema = new mongoose.Schema({
   ward: String,
   handle: String,
   photo: String,
-  status: { type: String, default: 'pending' }, // pending | approved | rejected | published
+  status: { type: String, default: 'pending' }, // pending | approved | published
   resolved: { type: Boolean, default: false },
   tweetUrl: { type: String, default: '' },
+  pushSubscription: { type: Object, default: null }, // Stores browser push endpoint
   notifications: [{
     message: String,
     tweetUrl: String,
@@ -44,21 +56,29 @@ const reportSchema = new mongoose.Schema({
 
 const Report = mongoose.model('Report', reportSchema);
 
-// Middleware for Admin authentication
+// Helper function to send push notification safely
+async function sendPushNotification(subscription, title, body, url) {
+  if (!subscription || !PUBLIC_VAPID_KEY) return;
+  const payload = JSON.stringify({ title, body, url });
+  try {
+    await webpush.sendNotification(subscription, payload);
+  } catch (err) {
+    console.error('Error sending push notification:', err);
+  }
+}
+
 const authAdmin = (req, res, next) => {
   const token = req.headers['authorization'] || req.query.admin_token;
-  if (token === ADMIN_TOKEN || token === `Bearer ${ADMIN_TOKEN}`) {
-    return next();
-  }
+  if (token === ADMIN_TOKEN || token === `Bearer ${ADMIN_TOKEN}`) return next();
   return res.status(401).json({ success: false, error: 'Unauthorized admin access' });
 };
 
-// 1. Citizen submits a new report
+// 1. Citizen submits report & saves push subscription
 app.post('/api/reports', async (req, res) => {
   try {
-    const { id, pin, land, lat, lng, ward, handle, photo } = req.body;
+    const { id, pin, land, lat, lng, ward, handle, photo, pushSubscription } = req.body;
     const reportId = id || 'MB-' + Math.floor(100000 + Math.random() * 900000);
-    const userToken = uuidv4(); // Unique unguessable security token
+    const userToken = uuidv4();
 
     const newReport = new Report({
       reportId,
@@ -70,77 +90,50 @@ app.post('/api/reports', async (req, res) => {
       ward,
       handle,
       photo,
+      pushSubscription,
       status: 'pending',
       notifications: [{ message: 'Report received and queued for moderator review.' }]
     });
 
     await newReport.save();
-
-    res.json({
-      success: true,
-      report: {
-        id: reportId,
-        token: userToken,
-        status: newReport.status
-      }
-    });
+    res.json({ success: true, report: { id: reportId, token: userToken, status: newReport.status } });
   } catch (err) {
     console.error('Submit error:', err);
-    res.status(500).json({ success: false, error: 'Failed to submit report to database.' });
+    res.status(500).json({ success: false, error: 'Failed to submit report.' });
   }
 });
 
-// 2. Public endpoint: Only returns approved & published reports for the map view
+// 2. Public Map View
 app.get('/api/reports/public', async (req, res) => {
   try {
     const publicReports = await Report.find({ status: { $in: ['approved', 'published'] } })
-      .select('-photo -token') // Exclude heavy photos & user tokens for public performance
+      .select('-photo -token -pushSubscription')
       .sort({ createdAt: -1 });
 
     res.json(publicReports.map(r => ({
-      id: r.reportId,
-      pin: r.pin,
-      land: r.land,
-      lat: r.lat,
-      lng: r.lng,
-      ward: r.ward,
-      handle: r.handle,
-      resolved: r.resolved,
-      tweetUrl: r.tweetUrl
+      id: r.reportId, pin: r.pin, land: r.land, lat: r.lat, lng: r.lng, ward: r.ward, handle: r.handle, resolved: r.resolved, tweetUrl: r.tweetUrl
     })));
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to fetch public map data.' });
   }
 });
 
-// 3. User Notification Polling (Isolated with Report ID & Security Token)
+// 3. User Notification Polling & Status
 app.get('/api/reports/:id/notifications', async (req, res) => {
   try {
     const { id } = req.params;
     const { token } = req.query;
-
     const report = await Report.findOne({ reportId: id });
-    if (!report) {
-      return res.status(404).json({ success: false, error: 'Report not found' });
-    }
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+    if (token && report.token !== token) return res.status(403).json({ success: false, error: 'Access denied' });
 
-    // Secure Data Isolation: Check token if provided
-    if (token && report.token !== token) {
-      return res.status(403).json({ success: false, error: 'Access denied: Token mismatch' });
-    }
-
-    res.json({
-      success: true,
-      status: report.status,
-      tweetUrl: report.tweetUrl,
-      notifications: report.notifications
-    });
+    res.json({ success: true, status: report.status, tweetUrl: report.tweetUrl, notifications: report.notifications });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error fetching notifications' });
   }
 });
 
-// 4. Admin Endpoint: Get all pending reports for moderation
+// 4. Admin: Get all reports
 app.get('/api/admin/reports', authAdmin, async (req, res) => {
   try {
     const reports = await Report.find().sort({ createdAt: -1 });
@@ -150,33 +143,44 @@ app.get('/api/admin/reports', authAdmin, async (req, res) => {
   }
 });
 
-// 5. Admin Endpoint: Approve & attach tweet link
+// 5. STAGE 1 & 2: Approve Submission or Attach Tweet URL
 app.post('/api/admin/reports/:id/approve', authAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { tweetUrl } = req.body;
-
     const report = await Report.findOne({ reportId: id });
     if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
 
-    report.status = tweetUrl ? 'published' : 'approved';
+    const isPublished = Boolean(tweetUrl);
+    report.status = isPublished ? 'published' : 'approved';
     if (tweetUrl) report.tweetUrl = tweetUrl;
 
-    report.notifications.push({
-      message: tweetUrl
-        ? 'Your report was approved and published on X (@mybmc)!'
-        : 'Your report has been verified and approved by the moderator team.',
-      tweetUrl: tweetUrl || ''
-    });
+    let msg = '';
+    let title = '';
 
+    if (isPublished) {
+      // Stage 2: Tweet published
+      title = 'Tweet Published! 🚀';
+      msg = 'Your report was approved and published on X (@mybmc)!';
+    } else {
+      // Stage 1: Moderator approved
+      title = 'Submission Approved! ✅';
+      msg = 'Your report has been verified and approved by the moderator team.';
+    }
+
+    report.notifications.push({ message: msg, tweetUrl: tweetUrl || '' });
     await report.save();
+
+    // Trigger Mobile Push Notification
+    await sendPushNotification(report.pushSubscription, title, msg, tweetUrl || '');
+
     res.json({ success: true, report });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to update report status.' });
   }
 });
 
-// 6. Admin Endpoint: Mark as resolved/cleared by BMC
+// 6. STAGE 3: Mark as Resolved & Close Ticket
 app.post('/api/admin/reports/:id/resolve', authAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,11 +188,15 @@ app.post('/api/admin/reports/:id/resolve', authAdmin, async (req, res) => {
     if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
 
     report.resolved = true;
-    report.notifications.push({
-      message: 'Great news! BMC has cleared and resolved this illegal hoarding.'
-    });
+    const title = 'Hoarding Cleared! 🎉';
+    const msg = 'Great news! BMC has cleared and resolved this illegal hoarding.';
 
+    report.notifications.push({ message: msg });
     await report.save();
+
+    // Trigger Stage 3 Push Notification
+    await sendPushNotification(report.pushSubscription, title, msg, '');
+
     res.json({ success: true, report });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to resolve report.' });
