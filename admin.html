@@ -3,122 +3,155 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Watch Mumbai - Moderator Desk</title>
+  <title>Watch Mumbai - Moderator Portal</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f5; margin: 0; padding: 20px; }
-    .container { max-width: 800px; margin: auto; }
-    h1 { color: #1e293b; }
-    .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .card h3 { margin-top: 0; color: #0f172a; }
-    .btn { padding: 10px 16px; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-right: 8px; text-decoration: none; display: inline-block; }
-    .btn-approve { background: #10b981; color: white; }
-    .btn-tweet { background: #1da1f2; color: white; }
-    .btn-reject { background: #ef4444; color: white; }
-    .btn-send { background: #3b82f6; color: white; }
-    img { max-width: 100%; height: 200px; object-fit: cover; border-radius: 6px; margin: 10px 0; }
-    .publish-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; margin-top: 15px; }
-    input[type="text"] { width: 70%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; color: #333; }
+    .container { max-width: 900px; margin: auto; }
+    h2 { color: #1976D2; text-align: center; }
+    .report-card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .resolved-card { border-left: 6px solid #9C27B0; background: #faf5fb; }
+    input[type="text"] { padding: 8px; width: 65%; border: 1px solid #ccc; border-radius: 4px; margin-right: 5px; }
+    button { padding: 9px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    .btn-verify { background: #4CAF50; }
+    .btn-tweet { background: #2196F3; }
+    .btn-resolve { background: #9C27B0; width: 100%; margin-top: 10px; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+    .bg-success { background: #4CAF50; }
+    .bg-warning { background: #ff9800; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>🛡️ Watch Mumbai Moderation Desk</h1>
-    <div id="pendingContainer">Loading pending reports...</div>
+    <h2>Moderation Pipeline Dashboard</h2>
+    <p style="text-align: center; color: #666;">Manage 3-stage workflows and trigger automated citizen push alerts.</p>
+    
+    <div id="reports-container">
+      <p style="text-align:center;">Loading reports from MongoDB database...</p>
+    </div>
   </div>
 
   <script>
-    const API_URL = "https://poster-bot-ji8e.onrender.com"; // Your Render backend URL
-    const ADMIN_TOKEN = "watchmumbai_admin_2026"; // Must match your Render environment variable
+    const RENDER_URL = 'https://poster-bot-ji8e.onrender.com';
+    const ADMIN_TOKEN = 'watchmumbai_admin_2026';
 
-    async function loadPending() {
+    async function fetchAdminReports() {
       try {
-        const res = await fetch(`${API_URL}/api/admin/pending`, {
-          headers: { 'x-admin-token': ADMIN_TOKEN }
+        const res = await fetch(`${RENDER_URL}/api/admin/reports`, {
+          headers: { 'Authorization': ADMIN_TOKEN }
         });
-        const data = await res.json();
-        const container = document.getElementById('pendingContainer');
+        const reports = await res.json();
+        renderReportCards(reports);
+      } catch (err) {
+        document.getElementById('reports-container').innerHTML = '<p style="color:red; text-align:center;">Failed to connect to backend server.</p>';
+      }
+    }
 
-        if (!data.reports || data.reports.length === 0) {
-          container.innerHTML = "<div class='card'><p>🎉 No pending reports to review!</p></div>";
-          return;
-        }
+    function renderReportCards(reports) {
+      const container = document.getElementById('reports-container');
+      container.innerHTML = '';
 
-        container.innerHTML = data.reports.map(r => `
-          <div class="card" id="card-${r.id}">
-            <h3>Report #${r.id}</h3>
-            <p><strong>Landmark:</strong> ${r.land} | <strong>Pincode:</strong> ${r.pin}</p>
-            <p><strong>Ward:</strong> ${r.ward} (${r.handle})</p>
-            ${r.photo ? `<img src="${r.photo}" alt="Report Photo">` : ''}
-            <div>
-              <button class="btn btn-approve" onclick="approveReport('${r.id}')">1. Approve & Notify Citizen</button>
-              <button class="btn btn-reject" onclick="rejectReport('${r.id}')">Reject</button>
+      if (reports.length === 0) {
+        container.innerHTML = '<p style="text-align:center;">No reports found.</p>';
+        return;
+      }
+
+      reports.forEach(r => {
+        let stage = 1;
+        if (r.resolved) stage = 3;
+        else if (r.status === 'published' || r.tweetUrl) stage = 2;
+        else if (r.status === 'approved') stage = 2;
+
+        const card = document.createElement('div');
+        card.className = `report-card ${r.resolved ? 'resolved-card' : ''}`;
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Ticket ID: ${r.reportId}</h3>
+            <span class="badge ${r.resolved ? 'bg-success' : 'bg-warning'}">
+              ${r.resolved ? 'CLOSED & RESOLVED' : 'ACTIVE PIPELINE'}
+            </span>
+          </div>
+
+          <!-- 3-STAGE PROGRESS PIPELINE -->
+          <div style="display:flex; margin: 15px 0; border-radius:6px; overflow:hidden; border: 1px solid #ddd;">
+            <div style="flex:1; padding:8px; text-align:center; background:${stage >= 1 ? '#4CAF50' : '#e0e0e0'}; color:${stage >= 1 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
+              Step 1: Verified
             </div>
-
-            <div id="publish-step-${r.id}" class="publish-box" style="display:none;">
-              <p style="color:#15803d; font-weight:bold; margin-top:0;">✅ Report Approved! Citizen has been notified.</p>
-              <a id="tweet-link-${r.id}" target="_blank" class="btn btn-tweet">2. Click to Post Tweet on X</a>
-              <br><br>
-              <input type="text" id="url-input-${r.id}" placeholder="Paste published Tweet link here (e.g. https://x.com/...)">
-              <button class="btn btn-send" onclick="publishTweetLink('${r.id}')">3. Send Tweet Link to Citizen</button>
+            <div style="flex:1; padding:8px; text-align:center; background:${stage >= 2 ? '#2196F3' : '#e0e0e0'}; color:${stage >= 2 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
+              Step 2: X Published
+            </div>
+            <div style="flex:1; padding:8px; text-align:center; background:${stage === 3 ? '#9C27B0' : '#e0e0e0'}; color:${stage === 3 ? 'white' : '#666'}; font-size:13px; font-weight:bold;">
+              Step 3: BMC Resolved
             </div>
           </div>
-        `).join('');
-      } catch (err) {
-        document.getElementById('pendingContainer').innerHTML = "<p>Error loading reports. Check ADMIN_TOKEN or server logs.</p>";
-      }
-    }
 
-    async function approveReport(id) {
-      const res = await fetch(`${API_URL}/api/admin/approve/${id}`, {
-        method: 'POST',
-        headers: { 'x-admin-token': ADMIN_TOKEN }
+          <p><strong>Ward:</strong> ${r.ward || 'N/A'} | <strong>Landmark:</strong> ${r.land || 'N/A'}</p>
+          <p><strong>Citizen Handle:</strong> ${r.handle || 'Anonymous'}</p>
+
+          <div style="margin-top:15px; border-top:1px solid #eee; padding-top:12px;">
+            <!-- STEP 1 -->
+            ${r.status === 'pending' ? `
+              <button class="btn-verify" onclick="approveStage1('${r.reportId}')">✅ Step 1: Verify & Approve</button>
+            ` : `<p style="color:#2e7d32; font-size:14px; margin:5px 0;">✔ Step 1 Completed (Approved & Alert Sent)</p>`}
+
+            <!-- STEP 2 -->
+            <div style="margin-top:10px;">
+              <input type="text" id="tweet-input-${r.reportId}" value="${r.tweetUrl || ''}" placeholder="Paste Tweet URL (https://x.com/...)" />
+              <button class="btn-tweet" onclick="publishStage2('${r.reportId}')">🚀 Step 2: Save & Push Tweet</button>
+            </div>
+
+            <!-- STEP 3 -->
+            <div style="margin-top:15px;">
+              ${!r.resolved ? `
+                <button class="btn-resolve" onclick="resolveStage3('${r.reportId}')">🎉 Step 3: Mark BMC Resolved & Close Ticket</button>
+              ` : `
+                <div style="background:#e8f5e9; color:#2e7d32; padding:10px; border-radius:4px; text-align:center; font-weight:bold;">
+                  🏁 Ticket Successfully Closed & Archived
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
       });
-      const data = await res.json();
-      
-      if (data.success) {
-        document.getElementById(`publish-step-${id}`).style.display = 'block';
-        document.getElementById(`tweet-link-${id}`).href = data.tweetIntentUrl;
-      }
     }
 
-    async function publishTweetLink(id) {
-      const tweetUrl = document.getElementById(`url-input-${id}`).value.trim();
-      if (!tweetUrl) return alert("Please paste the posted tweet URL first!");
-
-      const res = await fetch(`${API_URL}/api/admin/publish-tweet/${id}`, {
+    async function approveStage1(id) {
+      await fetch(`${RENDER_URL}/api/admin/reports/${id}/approve`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-token': ADMIN_TOKEN 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
+        body: JSON.stringify({})
+      });
+      alert('Stage 1 Complete: User notified of approval!');
+      fetchAdminReports();
+    }
+
+    async function publishStage2(id) {
+      const tweetUrl = document.getElementById(`tweet-input-${id}`).value;
+      if (!tweetUrl) return alert('Please paste a Tweet URL first!');
+
+      await fetch(`${RENDER_URL}/api/admin/reports/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
         body: JSON.stringify({ tweetUrl })
       });
-      const data = await res.json();
-
-      if (data.success) {
-        alert("Citizen notified with the live tweet link!");
-        document.getElementById(`card-${id}`).remove();
-      }
+      alert('Stage 2 Complete: Tweet published & alert sent!');
+      fetchAdminReports();
     }
 
-    async function rejectReport(id) {
-      const reason = prompt("Reason for rejection:");
-      if (!reason) return;
+    async function resolveStage3(id) {
+      if (!confirm('Mark this ticket as fully resolved by BMC and close it?')) return;
 
-      await fetch(`${API_URL}/api/admin/reject/${id}`, {
+      await fetch(`${RENDER_URL}/api/admin/reports/${id}/resolve`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-token': ADMIN_TOKEN 
-        },
-        body: JSON.stringify({ reason })
+        headers: { 'Content-Type': 'application/json', 'Authorization': ADMIN_TOKEN },
+        body: JSON.stringify({})
       });
-
-      document.getElementById(`card-${id}`).remove();
+      alert('Stage 3 Complete: Ticket closed and final resolution push notification sent!');
+      fetchAdminReports();
     }
 
-    loadPending();
+    fetchAdminReports();
   </script>
 </body>
 </html>
