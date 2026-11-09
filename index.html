@@ -1,287 +1,725 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Watch Mumbai - Citizen Hoarding Reporting</title>
-  
-  <!-- Leaflet CSS for Maps -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #1e293b; }
-    header { background: #0f172a; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
-    header h1 { margin: 0; font-size: 1.4rem; font-weight: 700; }
-    header span { background: #38bdf8; color: #0f172a; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
-    
-    .main-container { display: flex; flex-direction: column; height: calc(100vh - 60px); }
-    @media (min-width: 768px) { .main-container { flex-direction: row; } }
-    
-    #map { flex: 1; min-height: 350px; width: 100%; }
-    .form-panel { width: 100%; max-width: 420px; background: white; padding: 20px; overflow-y: auto; border-left: 1px solid #e2e8f0; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
-    
-    .form-group { margin-bottom: 15px; }
-    .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9rem; }
-    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
-    .form-group input[readonly] { background-color: #f1f5f9; cursor: not-allowed; }
-    
-    .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-    .btn-submit:hover { background: #1d4ed8; }
-    
-    /* Notification Toast Component */
-    #citizenNotifBox { display: none; position: fixed; bottom: 20px; right: 20px; background: #ffffff; padding: 16px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-width: 350px; z-index: 9999; border-left: 5px solid #2563eb; }
-    #citizenNotifBox h4 { margin: 0 0 6px 0; color: #0f172a; font-size: 1rem; }
-    #citizenNotifBox p { margin: 0; font-size: 0.88rem; color: #475569; line-height: 1.4; }
-    .tweet-link-btn { display: inline-block; margin-top: 10px; background: #1da1f2; color: white; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: bold; }
-    .status-tag { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
-    .status-pending { background: #fef3c7; color: #92400e; }
-    .status-approved { background: #dbeafe; color: #1e40af; }
-    .status-published { background: #dcfce7; color: #166534; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch Mumbai</title>
+<!-- Google Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  --bg: #090d16;
+  --surface: #131b2e;
+  --surface-card: rgba(19, 27, 46, 0.75);
+  --ink: #f8fafc;
+  --mute: #94a3b8;
+  --line: rgba(255, 255, 255, 0.08);
+  --brand-orange: #ff7e36;
+  --brand-orange-light: rgba(255, 126, 54, 0.15);
+  --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.15);
+  --green: #10b981;
+  --green-bg: rgba(16, 185, 129, 0.15);
+  --accent: #38bdf8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* PREMIUM TRANSLUCENT HEADER */
+header {
+  position: fixed; top: 0; left: 0; right: 0; height: 74px; z-index: 1000;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+  background: rgba(9, 13, 22, 0.65);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border-bottom: 1px solid var(--line);
+}
+
+.logo-badge {
+  background: var(--brand-orange); color: #000; font-weight: 900; font-size: 16px;
+  padding: 8px 16px; border-radius: 10px; font-family: 'Inter', sans-serif; letter-spacing: -0.3px;
+  box-shadow: 0 4px 12px rgba(255, 126, 54, 0.25);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.nav-controls { display: flex; align-items: center; gap: 12px; }
+.nav-btn {
+  background: rgba(255, 255, 255, 0.04); color: var(--mute); border: 1px solid var(--line);
+  padding: 9px 20px; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;
+  transition: all 0.2s ease;
+}
+.nav-btn.active, .nav-btn:hover {
+  color: var(--ink); border-color: var(--brand-orange); background: rgba(255, 126, 54, 0.1);
+}
+
+button { font: inherit; cursor: pointer; border: 0; }
+.btn {
+  background: var(--brand-orange); color: #000; border-radius: 10px; padding: 11px 22px;
+  font-weight: 700; font-size: 14px; transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(255, 126, 54, 0.3);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255, 126, 54, 0.4); }
+.btn.green { background: var(--green); color: #fff; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.view { display: none; margin-top: 74px; }
+.view.active { display: block; }
+
+/* MAP VIEW HERO */
+.hero-container { position: relative; width: 100%; height: calc(100vh - 74px); display: flex; }
+#hero-map { height: 100%; width: 100%; z-index: 1; }
+
+.hero-overlay {
+  position: absolute; top: 28px; left: 28px; z-index: 500; max-width: 440px;
+  background: rgba(13, 19, 33, 0.72);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--line); border-radius: 24px; padding: 30px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+}
+.hero-tag {
+  background: var(--brand-orange-light); color: var(--brand-orange); padding: 5px 14px;
+  border-radius: 99px; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+}
+.hero-title { margin: 16px 0 10px; font-size: 30px; font-weight: 900; line-height: 1.2; letter-spacing: -0.5px; }
+.hero-desc { color: var(--mute); font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+
+.hero-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  background: rgba(9, 13, 22, 0.65); border: 1px solid var(--line); border-radius: 16px;
+  padding: 14px; margin-bottom: 24px; text-align: center;
+}
+.hero-stats b { display: block; font-size: 24px; font-weight: 800; }
+.hero-stats span { font-size: 11px; color: var(--mute); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+
+/* SECTIONS & MISSION */
+.info-section { max-width: 1200px; margin: 0 auto; padding: 70px 28px; }
+.section-title { font-size: 34px; font-weight: 900; text-align: center; margin-bottom: 12px; letter-spacing: -0.5px; }
+.section-sub { color: var(--mute); text-align: center; max-width: 680px; margin: 0 auto 52px; font-size: 16px; }
+
+.unauthorized-card {
+  background: var(--surface-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--line); border-radius: 24px; padding: 40px; margin-bottom: 50px;
+}
+.unauthorized-card h3 { font-size: 28px; font-weight: 900; margin: 0 0 16px; color: var(--ink); letter-spacing: -0.3px; }
+.unauthorized-card p.intro { color: var(--mute); font-size: 15px; line-height: 1.6; margin-bottom: 24px; }
+.unauthorized-card p.intro b { color: var(--ink); }
+.unauthorized-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px; }
+.unauthorized-list li {
+  position: relative; padding-left: 24px; color: var(--mute); font-size: 14px; line-height: 1.6;
+}
+.unauthorized-list li::before {
+  content: "•"; position: absolute; left: 6px; top: -2px; color: var(--brand-orange); font-size: 20px; font-weight: bold;
+}
+.unauthorized-list li b { color: var(--ink); font-weight: 700; }
+
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+.info-card {
+  background: var(--surface-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--line); border-radius: 22px; padding: 32px; transition: 0.3s;
+}
+.info-card:hover { border-color: rgba(255, 126, 54, 0.3); transform: translateY(-3px); }
+.info-card .icon-box {
+  width: 52px; height: 52px; background: var(--brand-orange-light); color: var(--brand-orange);
+  border-radius: 14px; display: grid; place-items: center; font-size: 24px; margin-bottom: 20px; font-weight: 800;
+}
+.info-card h3 { font-size: 20px; font-weight: 800; margin: 0 0 12px; }
+.info-card p { color: var(--mute); font-size: 14px; margin: 0; line-height: 1.6; }
+
+.mission-banner {
+  background: linear-gradient(135deg, rgba(255, 126, 54, 0.12) 0%, rgba(19, 27, 46, 0.8) 100%);
+  border: 1px solid rgba(255, 126, 54, 0.25); border-radius: 24px; padding: 40px; margin-bottom: 50px;
+  backdrop-filter: blur(16px);
+}
+.mission-banner h3 { font-size: 24px; font-weight: 900; color: var(--brand-orange); margin: 0 0 12px; }
+.mission-banner p { color: var(--ink); font-size: 15px; margin: 0; line-height: 1.7; }
+
+.steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+.step-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 26px;
+}
+.step-num { font-size: 40px; font-weight: 900; color: var(--brand-orange); opacity: 0.5; margin-bottom: 10px; }
+
+/* DIRECTORY VIEW */
+main { max-width: 1200px; margin: 0 auto; padding: 36px 28px; }
+.directory-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 32px; }
+.search-input {
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+  padding: 12px 18px; border-radius: 12px; font-size: 14px; min-width: 280px;
+}
+.tabs { display: flex; gap: 8px; }
+.tab {
+  border: 1px solid var(--line); background: var(--surface); color: var(--mute);
+  border-radius: 99px; padding: 9px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tab.on { background: var(--brand-orange); color: #000; font-weight: 800; border-color: var(--brand-orange); }
+
+.grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.card { background: var(--surface-card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+.row { display: flex; gap: 16px; }
+.thumb { width: 90px; height: 90px; border-radius: 12px; background: #090d16; object-fit: cover; border: 1px solid var(--line); }
+.pill { border-radius: 99px; padding: 3px 12px; font-weight: 800; font-size: 11px; display: inline-block; }
+.pill.up { background: var(--red-bg); color: var(--red); }
+.pill.ok { background: var(--green-bg); color: var(--green); }
+
+/* TRANSLUCENT MODAL */
+.modal { position: fixed; inset: 0; background: rgba(9, 13, 22, 0.85); backdrop-filter: blur(12px); display: none; place-items: center; padding: 20px; z-index: 2000; }
+.modal.show { display: grid; }
+.box {
+  background: rgba(19, 27, 46, 0.95); backdrop-filter: blur(20px); border: 1px solid var(--line);
+  border-radius: 26px; padding: 36px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.7);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.modal-header h2 { margin: 0; font-size: 24px; font-weight: 900; }
+label { display: block; font-size: 12px; font-weight: 800; margin: 18px 0 8px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.8px; }
+input[type=text], input[type=file], input[type=datetime-local] {
+  width: 100%; font: inherit; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink);
+}
+.two { display: grid; grid-template-columns: 130px 1fr; gap: 10px; }
+.note { font-size: 12px; color: var(--mute); margin: 6px 0 0; }
+.note.bad { color: var(--red); }
+.preview { max-width: 100%; max-height: 200px; border-radius: 14px; margin-top: 14px; border: 1px solid var(--line); object-fit: cover; }
+.x { background: none; border: 0; font-size: 30px; color: var(--mute); cursor: pointer; line-height: 1; }
+
+/* Real-time Citizen Notification Toast */
+#citizenNotifBox { display: none; position: fixed; bottom: 20px; right: 20px; background: #131b2e; padding: 18px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 360px; z-index: 9999; border: 1px solid var(--brand-orange); }
+#citizenNotifBox h4 { margin: 0 0 6px 0; color: var(--ink); font-size: 1rem; }
+#citizenNotifBox p { margin: 0; font-size: 0.9rem; color: var(--mute); line-height: 1.4; }
+.tweet-link-btn { display: inline-block; margin-top: 10px; background: #1da1f2; color: white; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 0.85rem; font-weight: bold; }
+.status-tag { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+.status-pending { background: #fef3c7; color: #92400e; }
+.status-approved { background: #dbeafe; color: #1e40af; }
+.status-published { background: #dcfce7; color: #166534; }
+</style>
 </head>
 <body>
 
-  <header>
-    <h1>🏙️ Watch Mumbai</h1>
-    <span>Citizen Reporting Desk</span>
-  </header>
+<!-- PREMIUM TRANSLUCENT HEADER -->
+<header>
+  <div class="brand">
+    <div class="logo-badge">watch मुंबई</div>
+  </div>
+  <div class="nav-controls">
+    <button class="nav-btn active" id="btnNavMap">Live Map</button>
+    <button class="nav-btn" id="btnNavDirectory">Issues Directory</button>
+    <button class="btn" id="openReport">Report Poster</button>
+  </div>
+</header>
 
-  <div class="main-container">
-    <!-- Map Container -->
-    <div id="map"></div>
-
-    <!-- Reporting Form -->
-    <div class="form-panel">
-      <h3>🚨 Report Illegal Hoarding</h3>
-      <p style="font-size: 0.85rem; color: #64748b;">Click anywhere on the map or allow location access to auto-fill ward data.</p>
+<!-- HERO MAP VIEW -->
+<div class="view active" id="view-landing">
+  <div class="hero-container">
+    <div class="hero-overlay">
+      <span class="hero-tag">Live Civic Action</span>
+      <h2 class="hero-title">Tracking Illegal Hoardings Across MMR.</h2>
+      <p class="hero-desc">Citizen reports are reviewed and communicated to @mybmc with official updates tracking resolution.</p>
       
-      <form id="hoardingForm">
-        <div class="form-group">
-          <label for="landmark">Landmark / Location Details</label>
-          <input type="text" id="landmark" placeholder="e.g. Near Dadar Station West" required>
-        </div>
+      <div class="hero-stats">
+        <div><b id="sUp" style="color:var(--red)">0</b><span>Still Up</span></div>
+        <div><b id="sOk" style="color:var(--green)">0</b><span>Cleared</span></div>
+        <div><b id="sTw" style="color:var(--brand-orange)">0</b><span>Reports Logged</span></div>
+      </div>
+      <button class="btn" id="heroReportBtn" style="width:100%;padding:15px;">Report an Illegal Poster Now</button>
+    </div>
+    <div id="hero-map"></div>
+  </div>
 
-        <div class="form-group">
-          <label for="pincode">Pincode</label>
-          <input type="text" id="pincode" placeholder="e.g. 400028" required pattern="[0-9]{6}">
-        </div>
+  <!-- MISSION & GOALS SECTION -->
+  <div class="info-section">
 
-        <div class="form-group">
-          <label for="ward">Mapped BMC Ward</label>
-          <input type="text" id="ward" readonly placeholder="Auto-detected Ward...">
-        </div>
+    <!-- WHAT IS AN UNAUTHORIZED ADVERTISEMENT SECTION -->
+    <div class="unauthorized-card">
+      <h3>What is an Unauthorized Advertisement?</h3>
+      <p class="intro">
+        According to municipal guidelines and sections 328 and 328A of the <b>Mumbai Municipal Corporation (MMC) Act, 1888</b>, an outdoor display is classified as <b>unauthorized and illegal</b> if it meets any of the following conditions:
+      </p>
+      <ul class="unauthorized-list">
+        <li><b>Absence of a Valid BMC License:</b> Any commercial billboard, LED/LCD screen, glow sign, or structural frame erected without a formal permit issued by the BMC's License Department.</li>
+        <li><b>Missing Regulatory NOCs:</b> Displays erected on private premises, housing society structures, or government lands (such as Railways, MHADA, or GRP) without obtaining both land-owner consent and mandatory municipal clearance.</li>
+        <li><b>Prohibited Locations:</b> Any advertisement installed on footpaths, traffic islands, public road medians, or building terraces, all of which are strictly banned under the updated safety guidelines.</li>
+        <li><b>Failure of Structural & Safety Standards:</b> Billboards exceeding the maximum permissible size cap (typically 40 ft x 40 ft), lacking a valid Structural Stability Certificate from a BMC-approved engineer, or operating without mandatory third-party insurance coverage.</li>
+        <li><b>Expired Permissions:</b> Any media placement that remains active beyond the three-month grace window following the expiry of its official BMC display permit.</li>
+        <li><b>Traffic Hazards:</b> Illuminated or digital OOH media operated without an official No Objection Certificate (NOC) from the Joint Commissioner of Police (Traffic), or failing to comply with flickering and nighttime luminance caps.</li>
+      </ul>
+    </div>
 
-        <div class="form-group">
-          <label for="handle">BMC Twitter Handle</label>
-          <input type="text" id="handle" readonly placeholder="@mybmc...">
-        </div>
+    <!-- MISSION STATEMENT BANNER -->
+    <div class="mission-banner">
+      <h3>Our Mission</h3>
+      <p>Our mission is to make Mumbai safer and aesthetically vibrant for every citizen. The sole purpose of Watch Mumbai is to assist municipal authorities and speed up action—not to revolt against or undermine the operations of the BMC by any means.</p>
+    </div>
 
-        <div class="form-group">
-          <label for="photo">Upload Photo Proof</label>
-          <input type="file" id="photo" accept="image/*" required>
-        </div>
+    <h2 class="section-title">Civic Accountability</h2>
+    <p class="section-sub">Empowering communities to keep public spaces safe across the Mumbai Metropolitan Region.</p>
 
-        <button type="submit" class="btn-submit" id="submitBtn">Submit Report to Watch Mumbai</button>
-      </form>
+    <div class="card-grid">
+      <div class="info-card">
+        <div class="icon-box">📍</div>
+        <h3>Tracking MMR Hoardings</h3>
+        <p>Mapping illegal posters and heavy structures across Mumbai, Thane, and Navi Mumbai to create a transparent, real-time public record.</p>
+      </div>
+
+      <div class="info-card">
+        <div class="icon-box">⚠️</div>
+        <h3>Life-Threatening Risks</h3>
+        <p>Unlicensed road hoardings pose serious safety risks to pedestrians and commuters during monsoons and high winds. Quick action saves lives.</p>
+      </div>
+
+      <div class="info-card">
+        <div class="icon-box">🤝</div>
+        <h3>Assisting Authorities</h3>
+        <p>Providing clear geotagged data directly to ward officers and @mybmc to help streamline civic cleanup operations efficiently.</p>
+      </div>
     </div>
   </div>
 
-  <!-- Real-time Citizen Notification Toast -->
-  <div id="citizenNotifBox">
-    <div id="notifContent"></div>
+  <!-- HOW TO OPERATE SECTION -->
+  <div style="background:rgba(19, 27, 46, 0.4);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+    <div class="info-section">
+      <h2 class="section-title">How To Operate Watch Mumbai</h2>
+      <p class="section-sub">Report illegal hoardings in 4 simple steps.</p>
+
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">01</div>
+          <h3>Snap Photo</h3>
+          <p>Take a quick photo of the illegal poster or hoarding at the spot.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">02</div>
+          <h3>Tag Location</h3>
+          <p>Click "Detect Location via GPS" or type the 6-digit pincode and street landmark.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">03</div>
+          <h3>Moderator Review</h3>
+          <p>Our civic moderation desk verifies the details and photo proof.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">04</div>
+          <h3>Communicated to BMC</h3>
+          <p>Approved reports are communicated via X (@mybmc) with live tracking links sent to you.</p>
+        </div>
+      </div>
+    </div>
   </div>
+</div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- DIRECTORY VIEW -->
+<div class="view" id="view-directory">
+  <main>
+    <div class="hero-stats" style="max-width:500px;margin:0 0 32px 0;background:var(--surface-card)">
+      <div><b id="sUpDir" style="color:var(--red)">0</b><span>Still Up</span></div>
+      <div><b id="sOkDir" style="color:var(--green)">0</b><span>Cleared</span></div>
+      <div><b id="sTwDir" style="color:var(--brand-orange)">0</b><span>Reports Logged</span></div>
+    </div>
 
-  <script>
-    const API_URL = "https://poster-bot-ji8e.onrender.com"; // Render Backend URL
-    let selectedLat = 19.0760;
-    let selectedLng = 72.8777;
-    let base64Photo = "";
+    <div class="directory-header">
+      <h2>Reported Issues Directory</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by landmark, pincode...">
+        <div class="tabs" id="tabs">
+          <button class="tab on" data-f="all">All</button>
+          <button class="tab" data-f="up">Still Up</button>
+          <button class="tab" data-f="ok">Cleared</button>
+        </div>
+      </div>
+    </div>
 
-    // BMC Ward Mapping Database (24 Wards)
-    const bmcWards = [
-      { name: "Ward A (Colaba/Fort)", handle: "@mybmcWardA", lat: 18.9220, lng: 72.8335 },
-      { name: "Ward B (Sandhurst Road)", handle: "@mybmcWardB", lat: 18.9500, lng: 72.8370 },
-      { name: "Ward C (Marine Lines)", handle: "@mybmcWardC", lat: 18.9511, lng: 72.8258 },
-      { name: "Ward D (Grant Road/Malabar Hill)", handle: "@mybmcWardD", lat: 18.9600, lng: 72.8150 },
-      { name: "Ward E (Byculla)", handle: "@mybmcWardE", lat: 18.9750, lng: 72.8300 },
-      { name: "Ward F/North (Matunga)", handle: "@mybmcWardFN", lat: 19.0270, lng: 72.8550 },
-      { name: "Ward F/South (Parel)", handle: "@mybmcWardFS", lat: 19.0030, lng: 72.8420 },
-      { name: "Ward G/North (Dadar)", handle: "@mybmcWardGN", lat: 19.0180, lng: 72.8430 },
-      { name: "Ward G/South (Worli)", handle: "@mybmcWardGS", lat: 18.9980, lng: 72.8170 },
-      { name: "Ward H/East (Bandra East)", handle: "@mybmcWardHE", lat: 19.0600, lng: 72.8520 },
-      { name: "Ward H/West (Bandra West)", handle: "@mybmcWardHW", lat: 19.0550, lng: 72.8300 },
-      { name: "Ward K/East (Andheri East)", handle: "@mybmcWardKE", lat: 19.1150, lng: 72.8560 },
-      { name: "Ward K/West (Andheri West)", handle: "@mybmcWardKW", lat: 19.1300, lng: 72.8250 },
-      { name: "Ward L (Kurla)", handle: "@mybmcWardL", lat: 19.0700, lng: 72.8800 },
-      { name: "Ward M/East (Govandi)", handle: "@mybmcWardME", lat: 19.0450, lng: 72.9150 },
-      { name: "Ward M/West (Chembur)", handle: "@mybmcWardMW", lat: 19.0620, lng: 72.8970 },
-      { name: "Ward N (Ghatkopar)", handle: "@mybmcWardN", lat: 19.0860, lng: 72.9080 },
-      { name: "Ward S (Bhandup)", handle: "@mybmcWardS", lat: 19.1450, lng: 72.9350 },
-      { name: "Ward T (Mulund)", handle: "@mybmcWardT", lat: 19.1720, lng: 72.9560 },
-      { name: "Ward P/North (Malad)", handle: "@mybmcWardPN", lat: 19.1860, lng: 72.8480 },
-      { name: "Ward P/South (Goregaon)", handle: "@mybmcWardPS", lat: 19.1550, lng: 72.8470 },
-      { name: "Ward R/Central (Borivali)", handle: "@mybmcWardRC", lat: 19.2300, lng: 72.8560 },
-      { name: "Ward R/North (Dahisar)", handle: "@mybmcWardRN", lat: 19.2570, lng: 72.8590 },
-      { name: "Ward R/South (Kandivali)", handle: "@mybmcWardRS", lat: 19.2050, lng: 72.8520 }
-    ];
+    <div class="grid" id="list"></div>
+  </main>
+</div>
 
-    // Initialize Leaflet Map centered on Mumbai
-    const map = L.map('map').setView([19.0760, 72.8777], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+<!-- REPORT MODAL -->
+<div class="modal" id="mReport">
+  <div class="box">
+    <div class="modal-header">
+      <h2>Report Illegal Poster</h2>
+      <button class="x" data-close>×</button>
+    </div>
 
-    let currentMarker = L.marker([19.0760, 72.8777], { draggable: true }).addTo(map);
+    <label>1. Poster Photo</label>
+    <input type="file" id="photo" accept="image/*">
+    <img id="prev" class="preview" alt="" hidden>
 
-    // Get closest ward by coordinates
-    function getClosestWard(lat, lng) {
-      let minDistance = Infinity;
-      let closest = bmcWards[0];
+    <label>2. Location Details</label>
+    <button class="btn green" id="gps" type="button" style="width:100%;margin-bottom:12px;padding:12px;">📍 Detect Location via GPS</button>
+    <span class="note" id="gpsNote" style="display:block;margin-bottom:10px;"></span>
+    
+    <div class="two">
+      <input type="text" id="pin" placeholder="Pincode (e.g. 400077)" inputmode="numeric" maxlength="6">
+      <input type="text" id="land" placeholder="Landmark or street name">
+    </div>
+    <p class="note" id="wardNote"></p>
 
-      bmcWards.forEach(w => {
-        const dist = Math.hypot(w.lat - lat, w.lng - lng);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closest = w;
-        }
-      });
-      return closest;
-    }
+    <label style="font-weight:500;margin-top:22px;text-transform:none;display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <input type="checkbox" id="confirm" style="width:18px;height:18px;"> 
+      <span>I confirm this poster is installed at the specified location.</span>
+    </label>
+    <p class="note bad" id="err"></p>
 
-    function updateWardFields(lat, lng) {
-      selectedLat = lat;
-      selectedLng = lng;
-      const mapped = getClosestWard(lat, lng);
-      document.getElementById('ward').value = mapped.name;
-      document.getElementById('handle').value = mapped.handle;
-    }
+    <button class="btn" id="publish" style="width:100%;margin-top:24px;padding:15px;font-size:15px;" disabled>Submit Report for Review</button>
+  </div>
+</div>
 
-    map.on('click', function(e) {
-      const { lat, lng } = e.latlng;
-      currentMarker.setLatLng([lat, lng]);
-      updateWardFields(lat, lng);
-    });
+<!-- Real-time Citizen Notification Toast -->
+<div id="citizenNotifBox">
+  <div id="notifContent"></div>
+</div>
 
-    currentMarker.on('dragend', function(e) {
-      const { lat, lng } = e.target.getLatLng();
-      updateWardFields(lat, lng);
-    });
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var BACKEND_URL = "https://poster-bot-ji8e.onrender.com";
 
-    // Handle Image Conversion to Base64
-    document.getElementById('photo').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onloadend = function() {
-          base64Photo = reader.result;
-        };
-        reader.readAsDataURL(file);
-      }
-    });
+// Comprehensive BMC Wards Dictionary
+var WARDS = {
+  "400001": ["Ward A (Colaba/Fort)", "@mybmcWardA", 18.9387, 72.8353],
+  "400005": ["Ward A (Colaba)", "@mybmcWardA", 18.9067, 72.8147],
+  "400039": ["Ward A (Nariman Point)", "@mybmcWardA", 18.9256, 72.8242],
+  "400002": ["Ward B (Dongri/Kalbadevi)", "@mybmcWardB", 18.9500, 72.8333],
+  "400009": ["Ward B (Chinchbunder)", "@mybmcWardB", 18.9567, 72.8384],
+  "400003": ["Ward C (Bhuleshwar/Mandvi)", "@mybmcWardC", 18.9511, 72.8290],
+  "400004": ["Ward C (Girgaon)", "@mybmcWardC", 18.9556, 72.8208],
+  "400007": ["Ward D (Grant Road/Malabar Hill)", "@mybmcWardD", 18.9614, 72.8131],
+  "400006": ["Ward D (Malabar Hill)", "@mybmcWardD", 18.9548, 72.7985],
+  "400026": ["Ward D (Cumbala Hill)", "@mybmcWardD", 18.9686, 72.8093],
+  "400008": ["Ward E (Byculla/Nagpada)", "@mybmcWardE", 18.9667, 72.8333],
+  "400010": ["Ward E (Mazgaon)", "@mybmcWardE", 18.9689, 72.8442],
+  "400011": ["Ward E (Mahalaxmi)", "@mybmcWardE", 18.9800, 72.8267],
+  "400012": ["Ward F/South (Parel)", "@mybmcWardFS", 18.9950, 72.8400],
+  "400033": ["Ward F/South (Cotton Green)", "@mybmcWardFS", 18.9867, 72.8489],
+  "400014": ["Ward F/North (Dadar East/Wadala)", "@mybmcWardFN", 19.0180, 72.8430],
+  "400019": ["Ward F/North (Matunga East)", "@mybmcWardFN", 19.0269, 72.8553],
+  "400031": ["Ward F/North (Wadala)", "@mybmcWardFN", 19.0189, 72.8581],
+  "400013": ["Ward G/South (Lower Parel/Worli)", "@mybmcWardGS", 18.9960, 72.8290],
+  "400018": ["Ward G/South (Worli)", "@mybmcWardGS", 19.0100, 72.8150],
+  "400028": ["Ward G/North (Dadar West)", "@mybmcWardGN", 19.0176, 72.8478],
+  "400016": ["Ward G/North (Mahim)", "@mybmcWardGN", 19.0350, 72.8400],
+  "400017": ["Ward G/North (Dharavi)", "@mybmcWardGN", 19.0400, 72.8500],
+  "400050": ["Ward H/West (Bandra West)", "@mybmcWardHW", 19.0596, 72.8295],
+  "400054": ["Ward H/West (Santacruz West)", "@mybmcWardHW", 19.0800, 72.8300],
+  "400052": ["Ward H/West (Khar West)", "@mybmcWardHW", 19.0700, 72.8333],
+  "400051": ["Ward H/East (Bandra East)", "@mybmcWardHE", 19.0607, 72.8697],
+  "400055": ["Ward H/East (Santacruz East)", "@mybmcWardHE", 19.0814, 72.8544],
+  "400098": ["Ward H/East (Kalina)", "@mybmcWardHE", 19.0736, 72.8653],
+  "400053": ["Ward K/West (Andheri West/Lokhandwala)", "@mybmcWardKW", 19.1197, 72.8464],
+  "400049": ["Ward K/West (Juhu)", "@mybmcWardKW", 19.1000, 72.8267],
+  "400058": ["Ward K/West (Andheri West)", "@mybmcWardKW", 19.1200, 72.8300],
+  "400061": ["Ward K/West (Versova)", "@mybmcWardKW", 19.1333, 72.8167],
+  "400069": ["Ward K/East (Andheri East)", "@mybmcWardKE", 19.1136, 72.8697],
+  "400093": ["Ward K/East (Chakala)", "@mybmcWardKE", 19.1153, 72.8631],
+  "400099": ["Ward K/East (Sahar)", "@mybmcWardKE", 19.0967, 72.8550],
+  "400104": ["Ward P/South (Goregaon West)", "@mybmcWardPS", 19.1663, 72.8526],
+  "400063": ["Ward P/South (Goregaon East)", "@mybmcWardPS", 19.1550, 72.8650],
+  "400064": ["Ward P/North (Malad West)", "@mybmcWardPN", 19.1865, 72.8485],
+  "400097": ["Ward P/North (Malad East)", "@mybmcWardPN", 19.1800, 72.8600],
+  "400067": ["Ward R/South (Kandivali West)", "@mybmcWardRS", 19.2067, 72.8367],
+  "400101": ["Ward R/South (Kandivali East)", "@mybmcWardRS", 19.2100, 72.8650],
+  "400092": ["Ward R/Central (Borivali West)", "@mybmcWardRC", 19.2300, 72.8500],
+  "400066": ["Ward R/Central (Borivali East)", "@mybmcWardRC", 19.2200, 72.8600],
+  "400068": ["Ward R/North (Dahisar West)", "@mybmcWardRN", 19.2500, 72.8500],
+  "400070": ["Ward L (Kurla)", "@mybmcWardL", 19.0728, 72.8826],
+  "400072": ["Ward L (Saki Naka)", "@mybmcWardL", 19.0964, 72.8878],
+  "400043": ["Ward M/East (Govandi/Shivaji Nagar)", "@mybmcWardME", 19.0550, 72.9150],
+  "400088": ["Ward M/East (Trombay)", "@mybmcWardME", 19.0333, 72.9167],
+  "400071": ["Ward M/West (Chembur)", "@mybmcWardMW", 19.0600, 72.8900],
+  "400074": ["Ward M/West (Chembur Camp)", "@mybmcWardMW", 19.0500, 72.8900],
+  "400075": ["Ward N (Pant Nagar/Ghatkopar East)", "@mybmcWardN", 19.0800, 72.9080],
+  "400077": ["Ward N (Ghatkopar East)", "@mybmcWardN", 19.0785, 72.9012],
+  "400086": ["Ward N (Ghatkopar West)", "@mybmcWardN", 19.0900, 72.8900],
+  "400078": ["Ward S (Bhandup)", "@mybmcWardS", 19.1433, 72.9372],
+  "400076": ["Ward S (Powai)", "@mybmcWardS", 19.1197, 72.9050],
+  "400083": ["Ward S (Kanjurmarg)", "@mybmcWardS", 19.1300, 72.9300],
+  "400080": ["Ward T (Mulund West)", "@mybmcWardT", 19.1722, 72.9564],
+  "400081": ["Ward T (Mulund East)", "@mybmcWardT", 19.1683, 72.9639]
+};
 
-    // Handle Form Submission
-    document.getElementById('hoardingForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
+function getWardInfo(pin) {
+  if (WARDS[pin]) return { ward: WARDS[pin][0], handle: WARDS[pin][1], lat: WARDS[pin][2], lng: WARDS[pin][3] };
+  if (/^400\d{3}$/.test(pin)) return { ward: "BMC Central Command", handle: "@mybmc", lat: 19.0760, lng: 72.8777 };
+  return null;
+}
+
+function $(id){ return document.getElementById(id); }
+
+// Initialize Leaflet Map
+var map = L.map("hero-map", { zoomControl: false, maxZoom: 18, minZoom: 10 }).setView([19.076, 72.8777], 12);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, maxNativeZoom: 18 }).addTo(map);
+var group = L.layerGroup().addTo(map);
+
+// Fix map sizing bug on load
+setTimeout(() => { map.invalidateSize(); }, 250);
+
+var reports = [];
+
+function fetchServerReports() {
+  fetch(BACKEND_URL + "/api/reports/public")
+    .then(res => res.json())
+    .then(data => { reports = data; render(); })
+    .catch(() => console.log("Fetching server reports failed."));
+}
+fetchServerReports();
+
+function render(){
+  var upCount = reports.filter(r => !r.resolved).length;
+  var okCount = reports.filter(r => r.resolved).length;
+
+  $("sUp").textContent = upCount;
+  $("sOk").textContent = okCount;
+  $("sTw").textContent = reports.length;
+
+  $("sUpDir").textContent = upCount;
+  $("sOkDir").textContent = okCount;
+  $("sTwDir").textContent = reports.length;
+
+  group.clearLayers();
+  reports.forEach(r => {
+    var c = r.resolved ? "#10b981" : "#ef4444";
+    L.circleMarker([r.lat, r.lng], { radius: 10, color: "#fff", weight: 2, fillColor: c, fillOpacity: 0.95 }).addTo(group);
+  });
+
+  renderDirectoryList();
+}
+
+function renderDirectoryList() {
+  var container = $("list");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  if (reports.length === 0) {
+    container.innerHTML = `<p style="color:var(--mute)">No approved reports published yet.</p>`;
+    return;
+  }
+
+  reports.forEach(r => {
+    var card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="row">
+        ${r.photo ? `<img src="${r.photo}" class="thumb" alt="Poster">` : `<div class="thumb" style="display:grid;place-items:center;color:var(--mute)">No image</div>`}
+        <div>
+          <span class="pill ${r.resolved ? 'ok':'up'}">${r.resolved ? 'Cleared':'Still Up'}</span>
+          <h4 style="margin:8px 0 4px;font-size:16px;">${r.land || 'Illegal Poster'}</h4>
+          <p style="margin:0;font-size:12px;color:var(--mute)">Ward: ${r.ward} | Pin: ${r.pin}</p>
+          ${r.tweetUrl ? `<a href="${r.tweetUrl}" target="_blank" style="display:inline-block;margin-top:6px;font-size:12px;color:#38bdf8;text-decoration:none;">View on X 🔗</a>` : ''}
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+var photoData = null, gps = null;
+
+$("photo").onchange = function(e) {
+  var file = e.target.files[0];
+  if (file) {
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+      photoData = evt.target.result;
+      $("prev").src = photoData;
+      $("prev").hidden = false;
+      validateForm();
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
+$("gps").onclick = function() {
+  if (navigator.geolocation) {
+    $("gpsNote").textContent = "Locating position...";
+    $("gpsNote").style.color = "var(--mute)";
+    
+    navigator.geolocation.getCurrentPosition(pos => {
+      gps = [pos.coords.latitude, pos.coords.longitude];
+      $("gpsNote").textContent = "Fetching pincode & address...";
       
-      const submitBtn = document.getElementById('submitBtn');
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Submitting Report...";
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${gps[0]}&lon=${gps[1]}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.address) {
+            var addr = data.address;
+            if (addr.postcode) {
+              var cleanPin = addr.postcode.replace(/\s+/g, '');
+              if (/^\d{6}$/.test(cleanPin)) {
+                $("pin").value = cleanPin;
+              }
+            }
+            var regionParts = [
+              addr.suburb || addr.neighbourhood || addr.residential || addr.road || '',
+              addr.city_district || addr.city || addr.county || ''
+            ].filter(Boolean);
 
-      const reportData = {
-        land: document.getElementById('landmark').value,
-        pin: document.getElementById('pincode').value,
-        ward: document.getElementById('ward').value,
-        handle: document.getElementById('handle').value,
-        lat: selectedLat,
-        lng: selectedLng,
-        photo: base64Photo
-      };
+            if (regionParts.length > 0 && !$("land").value.trim()) {
+              $("land").value = regionParts.join(', ');
+            }
 
-      try {
-        const res = await fetch(`${API_URL}/api/reports`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(reportData)
+            $("gpsNote").textContent = "Location, Pincode & Region detected!";
+            $("gpsNote").style.color = "var(--green)";
+          } else {
+            $("gpsNote").textContent = "GPS coordinates captured!";
+            $("gpsNote").style.color = "var(--green)";
+          }
+          validateForm();
+        })
+        .catch(err => {
+          $("gpsNote").textContent = "GPS location captured!";
+          $("gpsNote").style.color = "var(--green)";
+          validateForm();
         });
 
-        const data = await res.json();
-
-        if (data.success) {
-          const reportId = data.report.id;
-          
-          // Save Report ID to local storage for persistent tracking
-          localStorage.setItem("my_last_report_id", reportId);
-
-          alert(`Report submitted successfully!\nTracking ID: #${reportId}\n\nOur moderator team is reviewing it.`);
-          
-          document.getElementById('hoardingForm').reset();
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Submit Report to Watch Mumbai";
-
-          // Immediately poll notifications
-          pollNotifications(reportId);
-        } else {
-          alert("Failed to submit report. Please try again.");
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Submit Report to Watch Mumbai";
-        }
-      } catch (err) {
-        alert("Server network error. Check backend connection.");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Submit Report to Watch Mumbai";
-      }
+    }, () => {
+      $("gpsNote").textContent = "GPS access denied. Enter details manually.";
+      $("gpsNote").style.color = "var(--red)";
     });
+  }
+};
 
-    // Poll Notifications Function
-    async function pollNotifications(reportId) {
-      if (!reportId) return;
+$("pin").oninput = $("land").oninput = $("confirm").onchange = validateForm;
 
-      try {
-        const res = await fetch(`${API_URL}/api/reports/${reportId}/notifications`);
-        const data = await res.json();
+function validateForm() {
+  var pinValid = /^400\d{3}$/.test($("pin").value);
+  var landValid = $("land").value.trim().length > 2;
+  var confirmed = $("confirm").checked;
+  var ward = getWardInfo($("pin").value);
 
-        if (data.success && data.notifications.length > 0) {
-          const latestNotif = data.notifications[data.notifications.length - 1];
-          displayNotificationBox(latestNotif, data.status);
-        }
-      } catch (err) {
-        console.error("Polling notification error:", err);
-      }
-    }
+  if (ward) {
+    $("wardNote").textContent = `Mapped Ward: ${ward.ward} (${ward.handle})`;
+    $("wardNote").style.color = "var(--accent)";
+  } else {
+    $("wardNote").textContent = $("pin").value.length === 6 ? "Ward: Generic Mumbai Area (@mybmc)" : "";
+    $("wardNote").style.color = "var(--mute)";
+  }
 
-    function displayNotificationBox(notif, status) {
-      const box = document.getElementById("citizenNotifBox");
-      const content = document.getElementById("notifContent");
+  $("publish").disabled = !(pinValid && landValid && confirmed);
+}
+
+$("publish").onclick = function() {
+  var pin = $("pin").value, w = getWardInfo(pin);
+  var btn = $("publish");
+  btn.disabled = true;
+  btn.textContent = "Submitting for Moderator Review...";
+
+  var newReport = {
+    id: "MB-" + Math.floor(100000 + Math.random() * 900000),
+    pin: pin,
+    land: $("land").value.trim(),
+    lat: gps ? gps[0] : (w ? w.lat : 19.0760),
+    lng: gps ? gps[1] : (w ? w.lng : 72.8777),
+    ward: w ? w.ward : "Mumbai City",
+    handle: w ? w.handle : "@mybmc",
+    photo: photoData
+  };
+
+  fetch(BACKEND_URL + "/api/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(newReport)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      var reportId = data.report.id;
+      localStorage.setItem("my_last_report_id", reportId);
+      alert(`Report submitted successfully!\nTracking ID: #${reportId}\n\nOur moderator team is reviewing it.`);
+      closeModals();
+      btn.disabled = false;
+      btn.textContent = "Submit Report for Review";
       
-      let statusClass = "status-pending";
-      if (status === "approved") statusClass = "status-approved";
-      if (status === "published") statusClass = "status-published";
-
-      content.innerHTML = `
-        <h4>🔔 Report Status Update</h4>
-        <span class="status-tag ${statusClass}">Status: ${status}</span>
-        <p style="margin-top:8px;">${notif.message}</p>
-        ${notif.tweetUrl ? `<a href="${notif.tweetUrl}" target="_blank" class="tweet-link-btn">View Tweet on X 🔗</a>` : ''}
-      `;
-
-      box.style.display = "block";
+      // Start polling notifications for this report
+      pollNotifications(reportId);
+      setInterval(() => pollNotifications(reportId), 10000);
+    } else {
+      alert("Error submitting report.");
+      btn.disabled = false;
+      btn.textContent = "Submit Report for Review";
     }
+  })
+  .catch(err => {
+    alert("Connection Error. Check backend connection.");
+    btn.disabled = false;
+    btn.textContent = "Submit Report for Review";
+  });
+};
 
-    // Auto-check notifications every 10 seconds if a previous report ID exists in local storage
-    window.addEventListener("DOMContentLoaded", () => {
-      updateWardFields(19.0760, 72.8777);
+// Real-time Notification Polling
+function pollNotifications(reportId) {
+  if (!reportId) return;
 
-      const savedReportId = localStorage.getItem("my_last_report_id");
-      if (savedReportId) {
-        pollNotifications(savedReportId);
-        setInterval(() => pollNotifications(savedReportId), 10000); // Check every 10 seconds
+  fetch(`${BACKEND_URL}/api/reports/${reportId}/notifications`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && data.notifications && data.notifications.length > 0) {
+        var latestNotif = data.notifications[data.notifications.length - 1];
+        displayNotificationBox(latestNotif, data.status);
       }
-    });
-  </script>
+    })
+    .catch(err => console.error("Polling notification error:", err));
+}
+
+function displayNotificationBox(notif, status) {
+  var box = $("citizenNotifBox");
+  var content = $("notifContent");
+  
+  var statusClass = "status-pending";
+  if (status === "approved") statusClass = "status-approved";
+  if (status === "published") statusClass = "status-published";
+
+  content.innerHTML = `
+    <h4>🔔 Report Status Update</h4>
+    <span class="status-tag ${statusClass}">Status: ${status}</span>
+    <p style="margin-top:8px;">${notif.message}</p>
+    ${notif.tweetUrl ? `<a href="${notif.tweetUrl}" target="_blank" class="tweet-link-btn">View Tweet on X 🔗</a>` : ''}
+  `;
+
+  box.style.display = "block";
+}
+
+$("btnNavMap").onclick = function() {
+  $("view-landing").classList.add("active");
+  $("view-directory").classList.remove("active");
+  $("btnNavMap").classList.add("active");
+  $("btnNavDirectory").classList.remove("active");
+  map.invalidateSize();
+};
+
+$("btnNavDirectory").onclick = function() {
+  $("view-directory").classList.add("active");
+  $("view-landing").classList.remove("active");
+  $("btnNavDirectory").classList.add("active");
+  $("btnNavMap").classList.remove("active");
+};
+
+function openModal(id){ $(id).classList.add("show"); }
+function closeModals(){ document.querySelectorAll(".modal").forEach(m => m.classList.remove("show")); }
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeModals);
+$("openReport").onclick = $("heroReportBtn").onclick = function(){ openModal("mReport"); };
+
+// Auto-check notifications on page load if user has a tracked report
+window.addEventListener("DOMContentLoaded", () => {
+  var savedReportId = localStorage.getItem("my_last_report_id");
+  if (savedReportId) {
+    pollNotifications(savedReportId);
+    setInterval(() => pollNotifications(savedReportId), 10000);
+  }
+});
+</script>
 </body>
 </html>
