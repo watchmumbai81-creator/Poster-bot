@@ -6,13 +6,12 @@ const webpush = require('web-push');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' })); // Increased limit for image uploads
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'watchmumbai_admin_2026';
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Configure Web Push with VAPID keys from environment variables
 const PUBLIC_VAPID_KEY = process.env.PUBLIC_VAPID_KEY;
 const PRIVATE_VAPID_KEY = process.env.PRIVATE_VAPID_KEY;
 
@@ -24,14 +23,12 @@ if (PUBLIC_VAPID_KEY && PRIVATE_VAPID_KEY) {
   );
 }
 
-// Connect to MongoDB Atlas
 if (MONGODB_URI) {
   mongoose.connect(MONGODB_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas!'))
     .catch(err => console.error('MongoDB connection error:', err));
 }
 
-// Database Schema definition with Push Subscription support
 const reportSchema = new mongoose.Schema({
   reportId: { type: String, required: true, unique: true },
   token: { type: String, required: true },
@@ -42,10 +39,10 @@ const reportSchema = new mongoose.Schema({
   ward: String,
   handle: String,
   photo: String,
-  status: { type: String, default: 'pending' }, // pending | approved | published
+  status: { type: String, default: 'pending' },
   resolved: { type: Boolean, default: false },
   tweetUrl: { type: String, default: '' },
-  pushSubscription: { type: Object, default: null }, // Stores browser push endpoint
+  pushSubscription: { type: Object, default: null },
   notifications: [{
     message: String,
     tweetUrl: String,
@@ -56,7 +53,6 @@ const reportSchema = new mongoose.Schema({
 
 const Report = mongoose.model('Report', reportSchema);
 
-// Helper function to send push notification safely
 async function sendPushNotification(subscription, title, body, url) {
   if (!subscription || !PUBLIC_VAPID_KEY) return;
   const payload = JSON.stringify({ title, body, url });
@@ -73,7 +69,7 @@ const authAdmin = (req, res, next) => {
   return res.status(401).json({ success: false, error: 'Unauthorized admin access' });
 };
 
-// 1. Citizen submits report & saves push subscription
+// 1. Citizen submits report
 app.post('/api/reports', async (req, res) => {
   try {
     const { id, pin, land, lat, lng, ward, handle, photo, pushSubscription } = req.body;
@@ -90,7 +86,7 @@ app.post('/api/reports', async (req, res) => {
       ward,
       handle,
       photo,
-      pushSubscription,
+      pushSubscription: pushSubscription || null,
       status: 'pending',
       notifications: [{ message: 'Report received and queued for moderator review.' }]
     });
@@ -98,15 +94,15 @@ app.post('/api/reports', async (req, res) => {
     await newReport.save();
     res.json({ success: true, report: { id: reportId, token: userToken, status: newReport.status } });
   } catch (err) {
-    console.error('Submit error:', err);
-    res.status(500).json({ success: false, error: 'Failed to submit report.' });
+    console.error('Detailed Submit error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to submit report.' });
   }
 });
 
 // 2. Public Map View
 app.get('/api/reports/public', async (req, res) => {
   try {
-    const publicReports = await Report.find({ status: { $in: ['approved', 'published'] } })
+    const publicReports = await Report.find({ status: { $in: ['approved', 'published', 'pending'] } })
       .select('-photo -token -pushSubscription')
       .sort({ createdAt: -1 });
 
@@ -159,11 +155,9 @@ app.post('/api/admin/reports/:id/approve', authAdmin, async (req, res) => {
     let title = '';
 
     if (isPublished) {
-      // Stage 2: Tweet published
       title = 'Tweet Published! 🚀';
       msg = 'Your report was approved and published on X (@mybmc)!';
     } else {
-      // Stage 1: Moderator approved
       title = 'Submission Approved! ✅';
       msg = 'Your report has been verified and approved by the moderator team.';
     }
@@ -171,7 +165,6 @@ app.post('/api/admin/reports/:id/approve', authAdmin, async (req, res) => {
     report.notifications.push({ message: msg, tweetUrl: tweetUrl || '' });
     await report.save();
 
-    // Trigger Mobile Push Notification
     await sendPushNotification(report.pushSubscription, title, msg, tweetUrl || '');
 
     res.json({ success: true, report });
@@ -194,7 +187,6 @@ app.post('/api/admin/reports/:id/resolve', authAdmin, async (req, res) => {
     report.notifications.push({ message: msg });
     await report.save();
 
-    // Trigger Stage 3 Push Notification
     await sendPushNotification(report.pushSubscription, title, msg, '');
 
     res.json({ success: true, report });
