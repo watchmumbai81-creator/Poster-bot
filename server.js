@@ -6,12 +6,13 @@ const webpush = require('web-push');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' })); // Increased limit for image uploads
+app.use(express.json({ limit: '20mb' }));
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'watchmumbai_admin_2026';
 const MONGODB_URI = process.env.MONGODB_URI;
 
+// Configure Web Push with VAPID keys
 const PUBLIC_VAPID_KEY = process.env.PUBLIC_VAPID_KEY;
 const PRIVATE_VAPID_KEY = process.env.PRIVATE_VAPID_KEY;
 
@@ -23,12 +24,18 @@ if (PUBLIC_VAPID_KEY && PRIVATE_VAPID_KEY) {
   );
 }
 
+// Connect to MongoDB Atlas with strict timeout handling to prevent buffering crashes
 if (MONGODB_URI) {
-  mongoose.connect(MONGODB_URI)
+  mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000 // Fails fast with clear error if connection is blocked
+  })
     .then(() => console.log('Successfully connected to MongoDB Atlas!'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(err => console.error('MongoDB connection error:', err.message));
+} else {
+  console.error('CRITICAL ERROR: MONGODB_URI environment variable is not defined in Render!');
 }
 
+// Database Schema definition
 const reportSchema = new mongoose.Schema({
   reportId: { type: String, required: true, unique: true },
   token: { type: String, required: true },
@@ -39,7 +46,7 @@ const reportSchema = new mongoose.Schema({
   ward: String,
   handle: String,
   photo: String,
-  status: { type: String, default: 'pending' },
+  status: { type: String, default: 'pending' }, // pending | approved | published
   resolved: { type: Boolean, default: false },
   tweetUrl: { type: String, default: '' },
   pushSubscription: { type: Object, default: null },
@@ -53,6 +60,7 @@ const reportSchema = new mongoose.Schema({
 
 const Report = mongoose.model('Report', reportSchema);
 
+// Helper function to send push notifications safely
 async function sendPushNotification(subscription, title, body, url) {
   if (!subscription || !PUBLIC_VAPID_KEY) return;
   const payload = JSON.stringify({ title, body, url });
@@ -69,9 +77,14 @@ const authAdmin = (req, res, next) => {
   return res.status(401).json({ success: false, error: 'Unauthorized admin access' });
 };
 
-// 1. Citizen submits report
+// 1. Citizen submits report & saves push subscription
 app.post('/api/reports', async (req, res) => {
   try {
+    // Check if MongoDB connection is ready before trying to insert
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ success: false, error: 'Database is still connecting. Please try again in 10 seconds.' });
+    }
+
     const { id, pin, land, lat, lng, ward, handle, photo, pushSubscription } = req.body;
     const reportId = id || 'MB-' + Math.floor(100000 + Math.random() * 900000);
     const userToken = uuidv4();
@@ -94,7 +107,7 @@ app.post('/api/reports', async (req, res) => {
     await newReport.save();
     res.json({ success: true, report: { id: reportId, token: userToken, status: newReport.status } });
   } catch (err) {
-    console.error('Detailed Submit error:', err);
+    console.error('Submit error:', err.message);
     res.status(500).json({ success: false, error: err.message || 'Failed to submit report.' });
   }
 });
@@ -102,6 +115,10 @@ app.post('/api/reports', async (req, res) => {
 // 2. Public Map View
 app.get('/api/reports/public', async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]);
+    }
+
     const publicReports = await Report.find({ status: { $in: ['approved', 'published', 'pending'] } })
       .select('-photo -token -pushSubscription')
       .sort({ createdAt: -1 });
@@ -132,6 +149,9 @@ app.get('/api/reports/:id/notifications', async (req, res) => {
 // 4. Admin: Get all reports
 app.get('/api/admin/reports', authAdmin, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]);
+    }
     const reports = await Report.find().sort({ createdAt: -1 });
     res.json(reports);
   } catch (err) {
